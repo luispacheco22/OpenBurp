@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "burpsuite": {
+      "type": "sse",
+      "url": "http://localhost:9876/"
+    },
+    "chrome-devtools": {
+      "type": "stdio",
+      "command": "chrome-devtools-mcp",
+      "args": [
+        "--executablePath",
+        "/Applications/Burp Suite Professional.app/Contents/Resources/app/burpbrowser/145.0.7632.46/Chromium.app/Contents/MacOS/Chromium",
+        "--proxy-server=http://127.0.0.1:8080",
+        "--accept-insecure-certs",
+        "--isolated"
+      ],
+      "env": {}
+    }
+  }
+}

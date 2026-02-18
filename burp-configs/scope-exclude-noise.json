@@ -1,0 +1,63 @@
+{
+  "target": {
+    "scope": {
+      "advanced_mode": true,
+      "include": [
+        {
+          "enabled": true,
+          "host": "^.*$",
+          "protocol": "any"
+        }
+      ],
+      "exclude": [
+        { "enabled": true, "host": "^.*\\.?facebook\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?facebook\\.net$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?fbcdn\\.net$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?tiktok\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?doubleclick\\.net$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?googlesyndication\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?googleadservices\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?googletagmanager\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?google-analytics\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?googleapis\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?gstatic\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?youtube\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?youtube-nocookie\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?google\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?googleusercontent\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?cloudfront\\.net$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?cloudflare\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?github\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?twitter\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?x\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?instagram\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?hotjar\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?amazon-adsystem\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?taboola\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?outbrain\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?chartbeat\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?scorecardresearch\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?comscore\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?tinypass\\.com$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?piano\\.io$", "protocol": "any" },
+        { "enabled": true, "host": "^.*\\.?mrf\\.io$", "protocol": "any" }
+      ]
+    }
+  },
+  "proxy": {
+    "http_history_display_filter": {
+      "by_request_type": {
+        "show_only_in_scope_items": true,
+        "hide_items_without_responses": false,
+        "show_only_parameterized_requests": false
+      },
+      "by_file_extension": {
+        "hide_items": ["js", "gif", "jpg", "png", "ico", "css", "woff", "woff2", "ttf", "svg"],
+        "hide_specific": true,
+        "show_items": ["asp", "aspx", "jsp", "php"],
+        "show_only_specific": false
+      },
+      "filter_mode": "SETTINGS"
+    }
+  }
+}

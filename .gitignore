@@ -1,0 +1,16 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings (generated per-user)
+.claude/
+
+# Node
+node_modules/
+
+# Burp project files
+*.burp
+
+# Evidence/screenshots from pentests
+evidence/
+screenshots/
