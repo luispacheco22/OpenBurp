@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenBurp Codex"
+  short_description: "Authorized Burp Suite workflows for Codex"
+  default_prompt: "Use $openburp-codex to configure Burp Suite MCP and a Burp-proxied Playwright browser for an authorized target."

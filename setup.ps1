@@ -1,257 +1,415 @@
-# =============================================================================
-# OpenBurp Windows Setup - Claude Code + Burp Suite Pro + Chrome DevTools MCP
-# Adapted from https://github.com/luispacheco22/OpenBurp
-# =============================================================================
-
 param(
     [string]$Workspace = "",
+    [ValidateSet("auto", "claude", "codex", "both")]
+    [string]$Client = "auto",
     [switch]$ManualMCP
 )
 
 $ErrorActionPreference = "Stop"
 
-function Write-Step { param([string]$msg) Write-Host "`n[*] $msg" -ForegroundColor Cyan }
-function Write-Ok   { param([string]$msg) Write-Host "  [OK] $msg" -ForegroundColor Green }
-function Write-Warn { param([string]$msg) Write-Host "  [!] $msg" -ForegroundColor Yellow }
-function Write-Err  { param([string]$msg) Write-Host "  [X] $msg" -ForegroundColor Red }
+$script:TargetClaude = $false
+$script:TargetCodex = $false
+$script:CodexCmd = $null
+$script:ClaudeCmd = $null
+$script:BurpChromium = $null
+$script:BurpJava = $null
+$script:ProxyJar = $null
+$script:ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-Write-Host ""
-Write-Host "====================================================" -ForegroundColor Magenta
-Write-Host "  OpenBurp Windows Setup"
-Write-Host "  Claude Code + Burp Suite Pro + Chrome DevTools MCP"
-Write-Host "====================================================" -ForegroundColor Magenta
-Write-Host ""
+function Write-Step { param([string]$Msg) Write-Host "`n[+] $Msg" -ForegroundColor Cyan }
+function Write-Ok   { param([string]$Msg) Write-Host "  [OK] $Msg" -ForegroundColor Green }
+function Write-Warn { param([string]$Msg) Write-Host "  [!] $Msg" -ForegroundColor Yellow }
+function Write-Err  { param([string]$Msg) Write-Host "  [X] $Msg" -ForegroundColor Red }
+function Write-Info { param([string]$Msg) Write-Host "  [i] $Msg" -ForegroundColor Blue }
 
-# --- Resolve workspace ---
-if (-not $Workspace) {
-    $Workspace = $PSScriptRoot
-}
-$Workspace = (Resolve-Path $Workspace -ErrorAction SilentlyContinue) ?? $Workspace
-if (-not (Test-Path $Workspace)) {
-    New-Item -ItemType Directory -Path $Workspace -Force | Out-Null
-}
-Write-Step "Workspace: $Workspace"
-
-# --- Check Node.js ---
-Write-Step "Checking Node.js..."
-try {
-    $nodeVersion = (node --version 2>$null)
-    $major = [int]($nodeVersion -replace '^v','').Split('.')[0]
-    if ($major -lt 18) {
-        Write-Err "Node.js >= 18 required (found $nodeVersion). Please upgrade."
-        exit 1
+function Resolve-Codex {
+    $cmd = Get-Command codex -ErrorAction SilentlyContinue
+    if ($cmd) {
+        return $cmd.Source
     }
-    Write-Ok "Node.js $nodeVersion"
-} catch {
-    Write-Err "Node.js not found. Install from https://nodejs.org (>= v18)"
-    exit 1
-}
 
-# --- Check npm ---
-Write-Step "Checking npm..."
-try {
-    $npmVersion = (npm --version 2>$null)
-    Write-Ok "npm $npmVersion"
-} catch {
-    Write-Err "npm not found."
-    exit 1
-}
+    $searchRoots = @(
+        "$env:LOCALAPPDATA\Programs",
+        "$env:ProgramFiles",
+        "${env:ProgramFiles(x86)}"
+    ) | Where-Object { $_ -and (Test-Path $_) }
 
-# --- Check Claude Code ---
-Write-Step "Checking Claude Code..."
-$claudePath = (Get-Command claude -ErrorAction SilentlyContinue)
-if ($claudePath) {
-    Write-Ok "Claude Code found at $($claudePath.Source)"
-} else {
-    Write-Warn "Claude Code not found. Installing via npm..."
-    npm install -g @anthropic-ai/claude-code
-    $claudePath = (Get-Command claude -ErrorAction SilentlyContinue)
-    if ($claudePath) {
-        Write-Ok "Claude Code installed"
-    } else {
-        Write-Err "Failed to install Claude Code. Install manually: npm install -g @anthropic-ai/claude-code"
-        exit 1
+    foreach ($root in $searchRoots) {
+        $candidate = Get-ChildItem -Path $root -Filter "codex.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($candidate) {
+            return $candidate.FullName
+        }
     }
+
+    return $null
 }
 
-# --- Install chrome-devtools-mcp ---
-Write-Step "Checking chrome-devtools-mcp..."
-$cdtMcp = (Get-Command chrome-devtools-mcp -ErrorAction SilentlyContinue)
-if ($cdtMcp) {
-    Write-Ok "chrome-devtools-mcp found at $($cdtMcp.Source)"
-} else {
-    Write-Warn "Installing chrome-devtools-mcp globally..."
-    npm install -g chrome-devtools-mcp
-    $cdtMcp = (Get-Command chrome-devtools-mcp -ErrorAction SilentlyContinue)
-    if ($cdtMcp) {
-        Write-Ok "chrome-devtools-mcp installed"
-    } else {
-        Write-Err "Failed to install chrome-devtools-mcp."
-        exit 1
-    }
-}
+function Resolve-Clients {
+    $codexCandidate = Resolve-Codex
+    $claudeCandidate = (Get-Command claude -ErrorAction SilentlyContinue)
 
-# --- Detect Burp Suite Chromium ---
-Write-Step "Detecting Burp Suite embedded Chromium..."
-$burpChromium = $null
-
-# Common Windows paths for Burp Suite Pro's embedded Chromium
-$searchPaths = @(
-    "$env:LOCALAPPDATA\BurpSuitePro\burpbrowser",
-    "$env:LOCALAPPDATA\BurpSuiteProfessional\burpbrowser",
-    "$env:ProgramFiles\BurpSuitePro\burpbrowser",
-    "${env:ProgramFiles(x86)}\BurpSuitePro\burpbrowser",
-    "D:\Users\$env:USERNAME\AppData\Local\BurpSuitePro\burpbrowser"
-)
-
-foreach ($basePath in $searchPaths) {
-    if (Test-Path $basePath) {
-        $chromeExe = Get-ChildItem -Path $basePath -Recurse -Filter "chrome.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($chromeExe) {
-            $burpChromium = $chromeExe.FullName
-            break
+    switch ($Client) {
+        "auto" {
+            if ($codexCandidate) {
+                $script:TargetCodex = $true
+                $script:CodexCmd = $codexCandidate
+            }
+            if ($claudeCandidate) {
+                $script:TargetClaude = $true
+                $script:ClaudeCmd = $claudeCandidate.Source
+            }
+            if (-not $script:TargetCodex -and -not $script:TargetClaude) {
+                Write-Err "No supported client detected. Install Codex or rerun with -Client claude to let setup install Claude Code."
+                exit 1
+            }
+        }
+        "codex" {
+            $script:TargetCodex = $true
+            $script:CodexCmd = $codexCandidate
+        }
+        "claude" {
+            $script:TargetClaude = $true
+            if ($claudeCandidate) {
+                $script:ClaudeCmd = $claudeCandidate.Source
+            }
+        }
+        "both" {
+            $script:TargetClaude = $true
+            $script:TargetCodex = $true
+            $script:CodexCmd = $codexCandidate
+            if ($claudeCandidate) {
+                $script:ClaudeCmd = $claudeCandidate.Source
+            }
         }
     }
 }
 
-if (-not $burpChromium) {
-    Write-Warn "Could not auto-detect Burp Chromium."
-    $burpChromium = Read-Host "Enter the full path to Burp's chrome.exe"
+function Test-CommandVersion {
+    param(
+        [string]$Name,
+        [string]$Command,
+        [switch]$Required
+    )
+
+    $cmd = Get-Command $Command -ErrorAction SilentlyContinue
+    if (-not $cmd) {
+        if ($Required) {
+            Write-Err "$Name not found."
+            exit 1
+        }
+        return $null
+    }
+
+    $version = & $cmd.Source --version 2>$null
+    if ($version) {
+        Write-Ok "$Name $version"
+    } else {
+        Write-Ok "$Name found"
+    }
+    return $cmd.Source
 }
 
-if (-not (Test-Path $burpChromium)) {
-    Write-Err "Chromium not found at: $burpChromium"
+function Detect-BurpChromium {
+    Write-Step "Detecting Burp Chromium..."
+
+    $searchRoots = @(
+        "$env:LOCALAPPDATA\BurpSuitePro\burpbrowser",
+        "$env:LOCALAPPDATA\BurpSuiteProfessional\burpbrowser",
+        "$env:ProgramFiles\Burp Suite Professional\burpbrowser",
+        "${env:ProgramFiles(x86)}\Burp Suite Professional\burpbrowser"
+    ) | Where-Object { $_ -and (Test-Path $_) }
+
+    foreach ($root in $searchRoots) {
+        $candidate = Get-ChildItem -Path $root -Recurse -Filter "chrome.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($candidate) {
+            $script:BurpChromium = $candidate.FullName
+            break
+        }
+    }
+
+    if (-not $script:BurpChromium) {
+        Write-Warn "Could not auto-detect Burp Chromium."
+        $script:BurpChromium = Read-Host "Path to Burp chromium executable"
+    }
+
+    if (-not (Test-Path $script:BurpChromium)) {
+        Write-Err "Chromium not found at: $script:BurpChromium"
+        exit 1
+    }
+
+    Write-Ok "Burp Chromium: $script:BurpChromium"
+}
+
+function Detect-BurpJava {
+    Write-Step "Detecting Burp Java..."
+
+    $candidates = @(
+        "$env:ProgramFiles\Burp Suite Professional\jre\bin\java.exe",
+        "${env:ProgramFiles(x86)}\Burp Suite Professional\jre\bin\java.exe",
+        "$env:LOCALAPPDATA\Programs\BurpSuiteProfessional\jre\bin\java.exe"
+    )
+
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path $candidate)) {
+            $script:BurpJava = $candidate
+            break
+        }
+    }
+
+    if (-not $script:BurpJava) {
+        $javaCmd = Get-Command java -ErrorAction SilentlyContinue
+        if ($javaCmd) {
+            $script:BurpJava = $javaCmd.Source
+            Write-Warn "Using system Java: $script:BurpJava"
+        }
+    }
+
+    if (-not $script:BurpJava) {
+        Write-Err "Could not find Java for the Burp MCP proxy."
+        exit 1
+    }
+
+    Write-Ok "Java: $script:BurpJava"
+}
+
+function Ensure-ProxyJar {
+    Write-Step "Ensuring Burp MCP proxy jar exists..."
+
+    $proxyDir = Join-Path $HOME ".BurpSuite\mcp-proxy"
+    $script:ProxyJar = Join-Path $proxyDir "mcp-proxy-all.jar"
+    $extensionJar = Join-Path $HOME ".BurpSuite\bapps\9952290f04ed4f628e624d0aa9dccebc\burp-mcp-all.jar"
+
+    if (Test-Path $script:ProxyJar) {
+        Write-Ok "Proxy jar: $script:ProxyJar"
+        return
+    }
+
+    if (-not (Test-Path $extensionJar)) {
+        Write-Err "Could not find the Burp MCP extension jar to extract the proxy."
+        exit 1
+    }
+
+    New-Item -ItemType Directory -Path $proxyDir -Force | Out-Null
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($extensionJar)
+    try {
+        $entry = $zip.Entries | Where-Object { $_.FullName -like "*mcp-proxy-all.jar" } | Select-Object -First 1
+        if (-not $entry) {
+            Write-Err "Proxy jar was not found inside the Burp extension jar."
+            exit 1
+        }
+        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $script:ProxyJar, $true)
+    } finally {
+        $zip.Dispose()
+    }
+
+    Write-Ok "Proxy jar: $script:ProxyJar"
+}
+
+function Check-RuntimeHealth {
+    Write-Step "Checking Burp runtime health..."
+
+    $curlCmd = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($curlCmd) {
+        $response = & $curlCmd.Source -is --max-time 3 http://127.0.0.1:9876 2>$null
+        if ($response -match "text/event-stream") {
+            Write-Ok "Burp MCP SSE responds on 127.0.0.1:9876"
+        } else {
+            Write-Warn "Burp MCP SSE did not return a text/event-stream header"
+        }
+    }
+
+    $netstat = & netstat -ano 2>$null
+    if ($netstat -match "127\.0\.0\.1:8080\s+.*LISTENING" -or $netstat -match "0\.0\.0\.0:8080\s+.*LISTENING") {
+        Write-Ok "Burp proxy is listening on 127.0.0.1:8080"
+    } else {
+        Write-Warn "Burp proxy is not listening on 127.0.0.1:8080"
+    }
+
+    if ($netstat -match "127\.0\.0\.1:9876\s+.*LISTENING" -or $netstat -match "0\.0\.0\.0:9876\s+.*LISTENING") {
+        Write-Ok "Burp MCP port is listening on 127.0.0.1:9876"
+    } else {
+        Write-Warn "Burp MCP port is not listening on 127.0.0.1:9876"
+    }
+}
+
+function Setup-Claude {
+    Write-Step "Configuring Claude Code..."
+
+    if (-not $script:ClaudeCmd) {
+        Write-Warn "Claude Code not found. Installing..."
+        npm install -g @anthropic-ai/claude-code
+        $claudeCandidate = Get-Command claude -ErrorAction SilentlyContinue
+        if (-not $claudeCandidate) {
+            Write-Err "Failed to install Claude Code."
+            exit 1
+        }
+        $script:ClaudeCmd = $claudeCandidate.Source
+    }
+
+    Write-Ok "Claude Code: $script:ClaudeCmd"
+
+    $chromeDevtools = Get-Command chrome-devtools-mcp -ErrorAction SilentlyContinue
+    if (-not $chromeDevtools) {
+        Write-Warn "Installing chrome-devtools-mcp..."
+        npm install -g chrome-devtools-mcp
+        $chromeDevtools = Get-Command chrome-devtools-mcp -ErrorAction SilentlyContinue
+        if (-not $chromeDevtools) {
+            Write-Err "Failed to install chrome-devtools-mcp."
+            exit 1
+        }
+    }
+
+    Write-Ok "chrome-devtools-mcp: $($chromeDevtools.Source)"
+
+    $claudeDir = Join-Path $Workspace ".claude"
+    New-Item -ItemType Directory -Path $claudeDir -Force | Out-Null
+    Copy-Item -Path (Join-Path $script:ScriptDir "settings.local.json") -Destination (Join-Path $claudeDir "settings.local.json") -Force
+    Write-Ok "Claude permissions copied to $claudeDir"
+
+    if ($ManualMCP) {
+        Write-Info "Manual Claude commands:"
+        Write-Host "  cd `"$Workspace`""
+        Write-Host "  claude mcp add -s project -t sse burpsuite http://localhost:9876/"
+        Write-Host "  claude mcp add -s project -t stdio chrome-devtools -- chrome-devtools-mcp --executablePath `"$script:BurpChromium`" --proxy-server=http://127.0.0.1:8080 --accept-insecure-certs --isolated"
+        return
+    }
+
+    Push-Location $Workspace
+    try {
+        try { & $script:ClaudeCmd mcp remove -s project burpsuite *> $null } catch {}
+        try { & $script:ClaudeCmd mcp remove -s project chrome-devtools *> $null } catch {}
+
+        & $script:ClaudeCmd mcp add -s project -t sse burpsuite http://localhost:9876/ | Out-Null
+        & $script:ClaudeCmd mcp add -s project -t stdio chrome-devtools -- chrome-devtools-mcp --executablePath $script:BurpChromium '--proxy-server=http://127.0.0.1:8080' --accept-insecure-certs --isolated | Out-Null
+    } finally {
+        Pop-Location
+    }
+
+    Write-Ok "Claude MCP servers configured for $Workspace"
+}
+
+function Install-CodexSkill {
+    $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
+    $skillSource = Join-Path $script:ScriptDir "skills\openburp-codex"
+    $skillTarget = Join-Path $codexHome "skills\openburp-codex"
+
+    if (-not (Test-Path $skillSource)) {
+        Write-Err "Missing bundled skill at $skillSource"
+        exit 1
+    }
+
+    New-Item -ItemType Directory -Path $skillTarget -Force | Out-Null
+    Copy-Item -Path (Join-Path $skillSource "*") -Destination $skillTarget -Recurse -Force
+    Write-Ok "Codex skill installed at $skillTarget"
+}
+
+function Setup-Codex {
+    Write-Step "Configuring Codex..."
+
+    if (-not $script:CodexCmd) {
+        $script:CodexCmd = Resolve-Codex
+    }
+
+    if (-not $script:CodexCmd) {
+        Write-Err "Codex CLI not found. Install Codex Desktop or CLI first."
+        exit 1
+    }
+
+    $codexVersion = & $script:CodexCmd --version 2>$null
+    if ($codexVersion) {
+        Write-Ok "Codex $codexVersion"
+    } else {
+        Write-Ok "Codex: $script:CodexCmd"
+    }
+
+    Install-CodexSkill
+
+    if ($ManualMCP) {
+        Write-Info "Manual Codex commands:"
+        Write-Host "  `"$script:CodexCmd`" mcp add burp -- `"$script:BurpJava`" -jar `"$script:ProxyJar`" --sse-url http://127.0.0.1:9876"
+        Write-Host "  `"$script:CodexCmd`" mcp add burp-browser -- npx -y @playwright/mcp@latest --executable-path `"$script:BurpChromium`" --proxy-server=http://127.0.0.1:8080 --ignore-https-errors --isolated"
+        return
+    }
+
+    try { & $script:CodexCmd mcp remove burp *> $null } catch {}
+    try { & $script:CodexCmd mcp remove burp-browser *> $null } catch {}
+
+    & $script:CodexCmd mcp add burp -- $script:BurpJava -jar $script:ProxyJar --sse-url http://127.0.0.1:9876 | Out-Null
+    & $script:CodexCmd mcp add burp-browser -- npx -y @playwright/mcp@latest --executable-path $script:BurpChromium '--proxy-server=http://127.0.0.1:8080' --ignore-https-errors --isolated | Out-Null
+
+    Write-Ok "Codex MCP servers configured"
+}
+
+Write-Host ""
+Write-Host "====================================================" -ForegroundColor Magenta
+Write-Host "  OpenBurp Windows Setup"
+Write-Host "  Burp Suite Pro for Claude Code and Codex"
+Write-Host "====================================================" -ForegroundColor Magenta
+Write-Host ""
+
+if (-not $Workspace) {
+    $Workspace = $PSScriptRoot
+}
+
+if (-not (Test-Path $Workspace)) {
+    New-Item -ItemType Directory -Path $Workspace -Force | Out-Null
+}
+
+$Workspace = (Resolve-Path $Workspace).Path
+Write-Step "Workspace: $Workspace"
+
+Write-Step "Checking Node.js..."
+$nodePath = Test-CommandVersion -Name "Node.js" -Command "node" -Required
+$nodeVersion = node --version
+$major = [int](($nodeVersion -replace '^v', '').Split('.')[0])
+if ($major -lt 18) {
+    Write-Err "Node.js >= 18 required (found $nodeVersion)."
     exit 1
 }
-Write-Ok "Burp Chromium: $burpChromium"
 
-# --- Setup .claude directory and permissions ---
-Write-Step "Setting up workspace permissions..."
-$claudeDir = Join-Path $Workspace ".claude"
-if (-not (Test-Path $claudeDir)) {
-    New-Item -ItemType Directory -Path $claudeDir -Force | Out-Null
+Write-Step "Checking npm and npx..."
+[void](Test-CommandVersion -Name "npm" -Command "npm" -Required)
+$npxPath = Get-Command npx -ErrorAction SilentlyContinue
+if (-not $npxPath) {
+    Write-Err "npx not found."
+    exit 1
+}
+Write-Ok "npx found"
+
+Resolve-Clients
+
+Write-Step "Client selection"
+if ($script:TargetClaude) { Write-Info "Claude Code" }
+if ($script:TargetCodex) { Write-Info "Codex" }
+
+Detect-BurpChromium
+Detect-BurpJava
+Ensure-ProxyJar
+Check-RuntimeHealth
+
+if ($script:TargetClaude) {
+    Setup-Claude
 }
 
-$settingsPath = Join-Path $claudeDir "settings.local.json"
-$settingsContent = @'
-{
-  "permissions": {
-    "allow": [
-      "mcp__burpsuite__send_http1_request",
-      "mcp__burpsuite__send_http2_request",
-      "mcp__burpsuite__create_repeater_tab",
-      "mcp__burpsuite__send_to_intruder",
-      "mcp__burpsuite__url_encode",
-      "mcp__burpsuite__url_decode",
-      "mcp__burpsuite__base64_encode",
-      "mcp__burpsuite__base64_decode",
-      "mcp__burpsuite__generate_random_string",
-      "mcp__burpsuite__output_project_options",
-      "mcp__burpsuite__get_proxy_http_history",
-      "mcp__burpsuite__get_proxy_http_history_regex",
-      "mcp__burpsuite__get_proxy_websocket_history",
-      "mcp__burpsuite__get_proxy_websocket_history_regex",
-      "mcp__burpsuite__get_scanner_issues",
-      "mcp__burpsuite__generate_collaborator_payload",
-      "mcp__burpsuite__get_collaborator_interactions",
-      "mcp__chrome-devtools__navigate_page",
-      "mcp__chrome-devtools__take_screenshot",
-      "mcp__chrome-devtools__take_snapshot",
-      "mcp__chrome-devtools__click",
-      "mcp__chrome-devtools__hover",
-      "mcp__chrome-devtools__fill",
-      "mcp__chrome-devtools__fill_form",
-      "mcp__chrome-devtools__press_key",
-      "mcp__chrome-devtools__wait_for",
-      "mcp__chrome-devtools__evaluate_script",
-      "mcp__chrome-devtools__list_pages",
-      "mcp__chrome-devtools__select_page",
-      "mcp__chrome-devtools__new_page",
-      "mcp__chrome-devtools__close_page",
-      "mcp__chrome-devtools__handle_dialog",
-      "mcp__chrome-devtools__list_network_requests",
-      "mcp__chrome-devtools__get_network_request",
-      "mcp__chrome-devtools__list_console_messages",
-      "WebFetch(domain:portswigger.net)",
-      "WebFetch(domain:github.com)",
-      "WebSearch",
-      "Bash(node --version:*)",
-      "Bash(npm --version:*)",
-      "Bash(npx:*)",
-      "Bash(python3:*)",
-      "Bash(python:*)"
-    ]
-  }
+if ($script:TargetCodex) {
+    Setup-Codex
 }
-'@
-$settingsContent | Out-File -FilePath $settingsPath -Encoding utf8
-Write-Ok "Permissions written to $settingsPath"
 
-# --- Setup .mcp.json ---
-Write-Step "Configuring MCP servers..."
-$mcpPath = Join-Path $Workspace ".mcp.json"
-
-# Escape backslashes for JSON
-$chromiumEscaped = $burpChromium -replace '\\', '\\\\'
-
-$mcpContent = @"
-{
-  "mcpServers": {
-    "burpsuite": {
-      "type": "sse",
-      "url": "http://localhost:9876/"
-    },
-    "chrome-devtools": {
-      "type": "stdio",
-      "command": "chrome-devtools-mcp",
-      "args": [
-        "--executablePath",
-        "$chromiumEscaped",
-        "--proxyServer",
-        "http://127.0.0.1:8080",
-        "--acceptInsecureCerts",
-        "--isolated"
-      ],
-      "env": {}
-    }
-  }
-}
-"@
-$mcpContent | Out-File -FilePath $mcpPath -Encoding utf8
-Write-Ok "MCP config written to $mcpPath"
-
-# --- Verify ---
-Write-Step "Verifying setup..."
-Push-Location $Workspace
-try {
-    claude mcp list
-} catch {
-    Write-Warn "Could not run 'claude mcp list'. Verify manually."
-}
-Pop-Location
-
-# --- Final checklist ---
-Write-Host ""
-Write-Host "====================================================" -ForegroundColor Green
-Write-Host "  Setup Complete!" -ForegroundColor Green
-Write-Host "====================================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "Pre-flight checklist:" -ForegroundColor Yellow
-Write-Host "  1. Open Burp Suite Professional"
-Write-Host "  2. Install 'MCP Server' extension from BApp Store"
-Write-Host "  3. Confirm Burp proxy on 127.0.0.1:8080"
-Write-Host "  4. Check MCP Server tab is healthy in Burp"
-Write-Host "  5. (Optional) Import burp-configs/scope-exclude-noise.json"
-Write-Host ""
-Write-Host "To start pentesting:" -ForegroundColor Cyan
-Write-Host "  cd $Workspace"
-Write-Host "  claude"
-Write-Host ""
-
-if ($ManualMCP) {
-    Write-Host "Manual MCP registration commands:" -ForegroundColor Yellow
-    Write-Host "  cd $Workspace"
-    Write-Host "  claude mcp add -s project -t sse burpsuite http://localhost:9876/"
-    Write-Host "  claude mcp add -s project -t stdio chrome-devtools -- chrome-devtools-mcp --executablePath `"$burpChromium`" --proxyServer http://127.0.0.1:8080 --acceptInsecureCerts --isolated"
-    Write-Host ""
+Write-Host "  [ ] Burp Suite Professional is open"
+Write-Host "  [ ] Burp BApp 'MCP Server' is installed and healthy"
+Write-Host "  [ ] Burp proxy listens on 127.0.0.1:8080"
+Write-Host "  [ ] Burp MCP SSE responds on 127.0.0.1:9876"
+if ($script:TargetClaude) {
+    Write-Host "  [ ] Claude Code authenticated if needed"
 }
+if ($script:TargetCodex) {
+    Write-Host "  [ ] Restart Codex Desktop or open a new thread after setup"
+}
+Write-Host ""
+Write-Host "Recommended Codex prompt:" -ForegroundColor Cyan
+Write-Host "  Use `$openburp-codex to verify a target I explicitly control. Start with one request through Burp."
+Write-Host ""
