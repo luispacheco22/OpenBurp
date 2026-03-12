@@ -253,7 +253,7 @@ function Setup-Claude {
     $chromeDevtools = Get-Command chrome-devtools-mcp -ErrorAction SilentlyContinue
     if (-not $chromeDevtools) {
         Write-Warn "Installing chrome-devtools-mcp..."
-        npm install -g @anthropic-ai/chrome-devtools-mcp
+        npm install -g chrome-devtools-mcp
         $chromeDevtools = Get-Command chrome-devtools-mcp -ErrorAction SilentlyContinue
         if (-not $chromeDevtools) {
             Write-Err "Failed to install chrome-devtools-mcp."

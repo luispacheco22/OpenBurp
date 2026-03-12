@@ -277,7 +277,7 @@ setup_claude() {
     if command -v chrome-devtools-mcp >/dev/null 2>&1; then
         print_step "chrome-devtools-mcp is already installed."
     else
-        npm install -g @anthropic-ai/chrome-devtools-mcp
+        npm install -g chrome-devtools-mcp
         if ! command -v chrome-devtools-mcp >/dev/null 2>&1; then
             print_error "Could not install chrome-devtools-mcp."
             exit 1
