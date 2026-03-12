@@ -1,0 +1,20 @@
+[mcp_servers.burp]
+command = "/Applications/Burp Suite Professional.app/Contents/Resources/jre.bundle/Contents/Home/bin/java"
+args = [
+  "-jar",
+  "/Users/your-user/.BurpSuite/mcp-proxy/mcp-proxy-all.jar",
+  "--sse-url",
+  "http://127.0.0.1:9876",
+]
+
+[mcp_servers.burp-browser]
+command = "npx"
+args = [
+  "-y",
+  "@playwright/mcp@latest",
+  "--executable-path",
+  "/path/to/Burp Chromium",
+  "--proxy-server=http://127.0.0.1:8080",
+  "--ignore-https-errors",
+  "--isolated",
+]
