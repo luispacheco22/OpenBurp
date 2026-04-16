@@ -2,6 +2,8 @@
 
 Use Burp Suite Professional with `Claude Code`, `Codex`, or both from one setup flow.
 
+Optionally pair it with a bundled Kali Linux Docker container so the AI agent can run recon, exploitation, and post-exploitation tooling (`nmap`, `sqlmap`, `impacket`, `evil-winrm`, etc.) in an isolated environment while Burp MCP handles web traffic analysis. See [CLAUDE.md](CLAUDE.md) for the full pentesting workflow.
+
 ## Quick start
 
 Auto-detect the available client and configure it:
@@ -62,6 +64,18 @@ Why Codex is different:
 - Burp proxy listening on `127.0.0.1:8080`
 - Burp MCP SSE listening on `127.0.0.1:9876`
 - Node.js `>= 18`
+- Docker (only if you want to use the Kali pentest container)
+
+## Kali pentest container (optional)
+
+Build the image and launch a persistent container with VPN support:
+
+```bash
+docker build -t kali-htb -f docker/Dockerfile.kali .
+./docker/start-kali.sh /path/to/vpn.ovpn <target-ip>
+```
+
+The agent then runs tools inside the container via `docker exec kali-pentest <command>`. Reports and evidence are persisted to `./reports/` through a mounted volume. Full methodology, phase-by-phase tooling, and execution patterns are documented in [CLAUDE.md](CLAUDE.md).
 
 ## Verify
 
@@ -123,6 +137,9 @@ If you prefer editing Codex config directly, see [mcp-example.toml](mcp-example.
 
 ## Included files
 
+- [CLAUDE.md](CLAUDE.md) is the full pentesting framework reference for the AI agent
+- [docker/Dockerfile.kali](docker/Dockerfile.kali) builds the Kali pentest image
+- [docker/start-kali.sh](docker/start-kali.sh) launches the container with VPN and report volumes
 - [.mcp.json](.mcp.json) is the Claude MCP example
 - [settings.local.json](settings.local.json) is the Claude local permission template
 - [mcp-example.toml](mcp-example.toml) is the Codex MCP example
