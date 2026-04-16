@@ -1,0 +1,68 @@
+FROM kalilinux/kali-rolling:latest
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ── Core system tools ──
+RUN apt-get update && apt-get install -y \
+    curl wget git vim less jq net-tools iputils-ping dnsutils \
+    python3 python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── VPN & Network ──
+RUN apt-get update && apt-get install -y \
+    openvpn wireguard-tools \
+    ssh sshpass netcat-traditional socat proxychains4 chisel \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Reconnaissance ──
+RUN apt-get update && apt-get install -y \
+    nmap masscan \
+    gobuster dirb feroxbuster ffuf \
+    nikto whatweb httpx-toolkit \
+    dnsrecon dnsenum sublist3r amass \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Web Application Testing ──
+RUN apt-get update && apt-get install -y \
+    sqlmap \
+    wfuzz \
+    nuclei \
+    wpscan \
+    arjun \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Credential Attacks ──
+RUN apt-get update && apt-get install -y \
+    hydra \
+    john hashcat \
+    seclists wordlists \
+    cewl \
+    crackmapexec \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── SMB / LDAP / AD ──
+RUN apt-get update && apt-get install -y \
+    enum4linux smbclient smbmap \
+    impacket-scripts \
+    ldap-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Post-Exploitation ──
+RUN apt-get update && apt-get install -y \
+    evil-winrm \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Python libraries for custom exploits ──
+RUN pip3 install --break-system-packages \
+    requests \
+    pywinrm \
+    pyjwt \
+    beautifulsoup4 \
+    pwntools
+
+# ── Decompress wordlists ──
+RUN gunzip -k /usr/share/wordlists/rockyou.txt.gz 2>/dev/null || true
+
+WORKDIR /workspace
+
+CMD ["bash"]

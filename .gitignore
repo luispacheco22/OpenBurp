@@ -14,3 +14,14 @@ node_modules/
 # Evidence/screenshots from pentests
 evidence/
 screenshots/
+
+# VPN configs (contain credentials)
+*.ovpn
+*.conf
+
+# Per-target pentest reports (private)
+reports/
+
+# Client/internal pentest reports
+docs/AMSYS-*
+docs/generate_pentest_pdf.py
